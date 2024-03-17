@@ -9,6 +9,10 @@ options.srate = [];
 options.channels = [];
 options.length_codes = 7; %length of behavioral codes from EEG preprocessing
 
+myparts = regexp(regtype,"\-","split");
+locking = myparts{1};
+
+
 for iVar = 1:length(varargin)
     if strcmp(varargin{iVar}, 'in')
         if length(varargin)>iVar
@@ -93,15 +97,15 @@ if options.parallel > 0
     end
 
     parfor iS = 1:length(BEH)
-        subfun_regress(iS,options,BEH(iS));
+        subfun_regress(iS,dir,options,BEH(iS),locking);
     end
 else
     for iS = 1:length(BEH)
-        subfun_regress(iS,dir,options,BEH(iS));
+        subfun_regress(iS,dir,options,BEH(iS),locking);
     end
 end
 
-function subfun_regress(iS,dir,options,BEH)
+function subfun_regress(iS,dir,options,BEH,locking)
 
 EEGfn = sprintf('VP%d',iS);
 
@@ -120,14 +124,30 @@ raw = pop_loadset('filename',[EEGfn '.set'],'filepath',inpath);
 
 %get trialnumbers, set and sequence/position information
 trialnums = [raw.event.originalTrialNumber];
+
+% which feedback is it? (belonging to stage 1 or two?)
 set = [raw.event.type];
 set = set(1:options.length_codes:end);
 set = str2num(set');
+
+%which position is it? (first or second feedback?)
 pos = [raw.event.type];
 pos = pos(options.length_codes:options.length_codes:end);
 pos = str2num(pos');
+
+%do numbers match?
 if (length(pos) ~= length(trialnums)) || (length(set) ~= length(trialnums))
     error('something is off')
+end
+
+if strcmp(locking,'resp')
+    set_stim = [raw.event.decision];
+    pos_stim = [raw.event.orientation];
+    rt_stim = [raw.event.rt];
+else
+    set_stim = [];
+    pos_stim = [];
+    rt_stim = [];
 end
 
 %apply resampling
@@ -145,8 +165,8 @@ else
 end
 
 %prepare behavioral data for regression
-[pre] = EEG_prepVars(BEH,trialnums,set,pos);
-
+% [pre] = EEG_prepVars(BEH,locking,trialnums,set,pos,set_stim,pos_stim,rt_stim);
+[pre] = EEG_prepVars_v2(BEH,locking,trialnums,set,pos,set_stim,pos_stim,rt_stim);
 
 %prepare tables for regression
 tprep = table();
@@ -159,9 +179,9 @@ for iReg = 1:length(options.regmod)
         end
     end
     %add variables from splitting conditions
-    for iS = 1:length(options.regmod(iReg).identVars)
-        if ~ismember(options.regmod(iReg).identVars(iS),tprep.Properties.VariableNames)
-        tprep.(options.regmod(iReg).identVars{iS}) = pre.(options.regmod(iReg).identVars{iS});
+    for isplit = 1:length(options.regmod(iReg).identVars)
+        if ~ismember(options.regmod(iReg).identVars(isplit),tprep.Properties.VariableNames)
+        tprep.(options.regmod(iReg).identVars{isplit}) = pre.(options.regmod(iReg).identVars{isplit});
         end
     end
     %add variables from orthogonalization

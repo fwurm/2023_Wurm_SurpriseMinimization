@@ -108,6 +108,10 @@ for i = 1:nSubjects
             %                 warning()
         end
         
+        avg_surprise(i,:,1) = mean(abs(data_sim.RPEp1),[1 3]);
+        avg_surprise(i,:,2) = mean(abs(data_sim.RPEp2),[1 3]);
+        avg_surprise(i,:,3) = mean(abs(data_sim.RPEp2)-abs(data_sim.RPEp1),[1 3]);
+        
         gnu = 1;
     end
     

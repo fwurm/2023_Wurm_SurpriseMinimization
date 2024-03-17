@@ -7,7 +7,8 @@ load(sprintf('BEHdata-%s.mat',exp_name),'BEHdata')
 load(sprintf('BEHsummary-%s.mat',exp_name),'BEHsummary')
 
 %% Regression: calculate regression and plot behavior
-[fig1,mdl,ds] = calcswitch(exp_name,BEHdata,1); %apply rescaling of rewards
+wincrit = [40 60];
+[fig1,mdl,ds] = calcswitch(exp_name,BEHdata,1,1,1,wincrit); %apply rescaling of rewards
 
 %% Contrast: ttest Stayprob(relWin & irLoss) vs Stayprob(relLoss & irWin)
 nS = length(BEHdata);

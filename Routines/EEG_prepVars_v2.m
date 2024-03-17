@@ -22,7 +22,7 @@ behaviors_old(1:100:300,:) = nan;
 behaviors = [behaviors; nan nan];
 behaviors(100:100:300,:) = nan;
 
-hpes = sum(IN.hpe,2);
+% evidence_resp = sum(IN.hpe,2);
 
 %sort RPEs &Qupdated (for feedback locked)
 nTrial = length(trialnums);
@@ -35,7 +35,10 @@ value_p1_sort = nan(nTrial,1);
 value_p2_sort = nan(nTrial,1);
 diff_p1_sort = nan(nTrial,1);
 diff_p2_sort = nan(nTrial,1);
-hpe_sort = nan(nTrial,1); %evidence
+evidence_resp_sort = nan(nTrial,1); %evidence
+evidence_fb_sort = nan(nTrial,1); %evidence
+evidence_resp_flip_sort = nan(nTrial,1); %evidence
+evidence_fb_flip_sort = nan(nTrial,1); %evidence
 cav = nan(nTrial,1); %credit assignment value
 caw = nan(nTrial,1); %credit assignment weight
 % caw2 = nan(nTrial,1); %credit assignment weight
@@ -44,11 +47,13 @@ value_net_old = nan(nTrial,1);
 diff_net_old = nan(nTrial,1);
 
 %sort value etc(for response locked)
+rpe_p1_old_sort = nan(nTrial,1);
+rpe_p2_old_sort = nan(nTrial,1);
 value_p1_old = nan(nTrial,1);
 value_p2_old = nan(nTrial,1);
 diff_p1_old = nan(nTrial,1);
 diff_p2_old = nan(nTrial,1);
-hpe_old = nan(nTrial,1); %evidence
+evd_resp_old = nan(nTrial,1); %evidence
 cav_old = nan(nTrial,1); %credit assignment value
 caw_old = nan(nTrial,1); %credit assignment weight
 behavior_old = nan(nTrial,1); %switch or stay
@@ -59,14 +64,15 @@ for iT = 1:length(trialnums)
     
     %% feedback locked part
     rpe_p1_sort(iT,1) = IN.rpe_p1(trialnums(iT),set_fb(iT));
-    rpe_p2_sort(iT,1) = IN.rpe_p2(trialnums(iT),3-set_fb(iT));
-%     Q_p1_sort = [Q_p1_sort; QP1(trialnums(iT),seq(iT))];
-%     Q_p2_sort = [Q_p2_sort; QP2(trialnums(iT),seq(iT))];
+    rpe_p2_sort(iT,1) = IN.rpe_p2(trialnums(iT),3-set_fb(iT)); %flip rpes for policy2 due to stage-coding in model
     value_p1_sort(iT,1) = valueP1(trialnums(iT),set_fb(iT));
     value_p2_sort(iT,1) = valueP2(trialnums(iT),set_fb(iT));
     diff_p1_sort(iT,1) = difficultyP1(trialnums(iT),set_fb(iT));
     diff_p2_sort(iT,1) = difficultyP2(trialnums(iT),set_fb(iT));
-    hpe_sort(iT,1) = IN.hpe(trialnums(iT),set_fb(iT));
+    evidence_resp_sort(iT,1) = IN.evidence_resp(trialnums(iT),set_fb(iT));
+    evidence_fb_sort(iT,1) = IN.evidence_fb(trialnums(iT),set_fb(iT));
+    evidence_resp_flip_sort(iT,1) = IN.evidence_resp(trialnums(iT),3-set_fb(iT));
+    evidence_fb_flip_sort(iT,1) = IN.evidence_fb(trialnums(iT),3-set_fb(iT));
     
     if pos(iT) == 2
         caw(iT,1) = IN.caw_new(trialnums(iT));
@@ -100,9 +106,23 @@ for iT = 1:length(trialnums)
         diff_net_old(iT,1) = difficultyNet_old(trialnums(iT),set_stim(iT));
         
         if rem(trialnums(iT),100) == 1
-            hpe_old(iT,1) = nan;
+            evd_resp_old(iT,1) = nan;
+            rpe_p1_old_sort(iT,1) = nan;
+            rpe_p2_old_sort(iT,1) = nan;
         else
-            hpe_old(iT,1) = hpes(trialnums(iT)-1);
+        
+%             rpe_p1_old_sort(iT,1) = IN.rpe_p1(trialnums(iT)-1,pos_stim(iT));
+%             rpe_p2_old_sort(iT,1) = IN.rpe_p2(trialnums(iT)-1,pos_stim(iT)); 
+    
+            if pos_stim(iT) == 3 %quick and dirty fix!
+                evd_resp_old(iT,1) = nan;
+                rpe_p1_old_sort(iT,1) = nan;
+                rpe_p2_old_sort(iT,1) = nan;
+            else
+                evd_resp_old(iT,1) = IN.evidence_resp(trialnums(iT)-1,pos_stim(iT));
+                rpe_p1_old_sort(iT,1) = IN.rpe_p1(trialnums(iT)-1,pos_stim(iT));
+                rpe_p2_old_sort(iT,1) = IN.rpe_p2(trialnums(iT)-1,pos_stim(iT)); 
+            end
         end
     end
 
@@ -132,7 +152,10 @@ OUT.valueP1 = value_p1_sort;
 OUT.valueP2 = value_p2_sort;
 OUT.difficultyP1 = diff_p1_sort;
 OUT.difficultyP2 = diff_p2_sort;
-OUT.hpe = hpe_sort;
+OUT.evidence_resp = evidence_resp_sort;
+OUT.evidence_fb = evidence_fb_sort;
+OUT.evidence_resp_flip = evidence_resp_flip_sort;
+OUT.evidence_fb_flip = evidence_fb_flip_sort;
 OUT.cav = cav;
 OUT.caw = caw;
 OUT.set = set_fb;
@@ -140,6 +163,8 @@ OUT.pos = pos;
 OUT.startend = startend;
 
 if strcmp(locking,'resp')
+    OUT.rpeP1_old = rpe_p1_old_sort;
+    OUT.rpeP2_old = rpe_p2_old_sort;
     OUT.valueP1_old = value_p1_old;
     OUT.valueP2_old = value_p2_old;
     OUT.diffP1_old = diff_p1_old;
@@ -149,7 +174,7 @@ if strcmp(locking,'resp')
     OUT.pos_old = pos_stim';
     OUT.rt_old = rt_stim';
     OUT.behavior_old = behavior_old;
-    OUT.hpe_old = hpe_old;
+    OUT.hpe_old = evd_resp_old;
     
     OUT.valueNet_old = value_net_old;
     OUT.diffNet_old = diff_net_old;

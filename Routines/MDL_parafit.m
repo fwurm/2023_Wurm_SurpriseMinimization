@@ -1,8 +1,12 @@
-function BEH_parafit(dir,fin,model,options)
+function BEH_parafit(dir,fin,model,options,outfix)
 % S - VP structure
 % fn - filename for data
 % model - case name for model
 % options - specifying environmental and fitting parameters
+
+if ~exist('outfix','var')
+    outfix = '';
+end
 
 %% information on model
 infopt.type = options.type;
@@ -13,7 +17,8 @@ infopt.rewardscale = options.rewardscale;
 load(fullfile(dir.dir,['BEHdata-' fin '.mat']),'BEHdata')
 
 %build parameter structure
-[~,param,f] = defineModel_eegCAT(model);
+% [~,param,f] = defineModel_eegCAT(model);
+[~,param,f] = defineModel_eegCAT_general(model);
 
 VPs = [BEHdata.VPnum];
 for i = 1:length(BEHdata)    
@@ -34,6 +39,7 @@ for i = 1:length(BEHdata)
     data(i).nB = options.nBlock;
     data(i).nT = options.nTrial_learn;
     data(i).info = infopt;
+    data(i).model = model;
 end
 
 % run optimization
@@ -41,11 +47,11 @@ fprintf('... Fitting RL model\n')
 fprintf('       Type: %s\n',model);
 
 
-% results = fw_mfit_optimize2(f,param,data);
+% % results = fw_mfit_optimize2(f,param,data);
 % results = mfit_optimize(f,param,data,infopt.nstarts);
 results = mfit_optimize_parallel(f,param,data,infopt.nstarts);
 
-fout = fullfile(dir.dir,strcat('Fits\fit-',model,'-',fin));
+fout = fullfile(dir.dir,strcat('Fits\fit-',model,'-',fin,outfix));
 fprintf('... Saving RL model\n')
 fprintf('    File: %s\n',fout)
 save(fout,'results')

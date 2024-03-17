@@ -1,7 +1,7 @@
-function EEG_buildGND(dir,options,inprefix,regtype)
+function EEG_buildGND(dir,fin,model,inprefix,regtype,eeginfix,framewin)
 
 % settings
-framewin = [-0.5 1]; %time of interest
+% framewin = [-1 0.5]; %time of interest
 nChan = 64; %number of channels
 
 %get input folder
@@ -15,7 +15,7 @@ nS = length(BEH);
 for iVP = 1:nS
     
     %load regression data
-    fn = fullfile(filedir, sprintf('VP%d.mat',iS));
+    fn = fullfile(filedir, sprintf('VP%d.mat',iVP));
     load(fn)
     
     %add to structure
@@ -75,7 +75,7 @@ GND_rpe = musterGND;
 
 %load EEG set (to get chanlocs)
 fn = sprintf('VP%d.set',iVP);
-raw = pop_loadset('filename',fn,'filepath',[dir.dir_eeg '\fbLocked\ef']);
+raw = pop_loadset('filename',fn,'filepath',fullfile(dir.dir_eeg,eeginfix));
 chanlocs = raw.chanlocs(1:nChan);
 for i = 1:nChan
     chanlocs(i).X = chanlocs(i).X/100;

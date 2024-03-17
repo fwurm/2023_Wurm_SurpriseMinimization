@@ -7,7 +7,8 @@ load(fullfile(dir.dir,strcat('BEHdata-',fin,'.mat')),'BEHdata');
 load(fullfile(dir.dir_fits,strcat('fit-', model, '-', fin, '.mat')),'results');
 
 %build parameter structure (taken from Gershman example)
-[~,~,f] = defineModel_eegCAT(model);
+% [~,~,f] = defineModel_eegCAT(model);
+[~,~,f] = defineModel_eegCAT_general(model);
 
 
 %simulate data based on fits
@@ -39,6 +40,8 @@ for i = 1:length(BEHdata)
     else
         warning('no rewardscale specified')
     end
+    
+    walk.model = model;
 
     %get fit parameter
     param = squeeze([results.x(i,:)]);
@@ -53,17 +56,26 @@ for i = 1:length(BEHdata)
     rpe_p1 = reshape(permute([data.RPEp1],[2,1,3]),[300,2]);
     Q1_p1 = reshape(permute([data.v1p1_upd],[2,1,3]),[300,2]); %[data.v1p1_upd(:,:,[data.c1])];
     Q2_p1 = reshape(permute([data.v2p1_upd],[2,1,3]),[300,2]); %[data.v2p1_upd(:,:,[data.c2])];
+    Q1_p1_old = reshape(permute([data.v1p1],[2,1,3]),[300,2]); %[data.v1p1_upd(:,:,[data.c1])];
+    Q2_p1_old = reshape(permute([data.v2p1],[2,1,3]),[300,2]); %[data.v2p1_upd(:,:,[data.c2])];
 %     Qupd_p1 = reshape(permute(Qupd_p1,[2,1,3]),[300,2]);
     
-    %policy 1 (incorrect)
+    %policy 2 (incorrect)
     rpe_p2 = reshape(permute([data.RPEp2],[2,1,3]),[300,2]);
     Q1_p2 = reshape(permute([data.v1p2_upd],[2,1,3]),[300,2]); %[data.v1p2_upd(:,:,[data.c1])];
     Q2_p2 = reshape(permute([data.v2p2_upd],[2,1,3]),[300,2]); %[data.v2p2_upd(:,:,[data.c2])];
+    Q1_p2_old = reshape(permute([data.v1p2],[2,1,3]),[300,2]); %[data.v1p2_upd(:,:,[data.c1])];
+    Q2_p2_old = reshape(permute([data.v2p2],[2,1,3]),[300,2]); %[data.v2p2_upd(:,:,[data.c2])];
 %     Qupd_p2 = reshape(permute(Qupd_p2,[2,1,3]),[300,2]);
+
+    %net values
+    Q1net = reshape(permute([data.v1net],[2,1,3]),[300,2]);
+    Q2net = reshape(permute([data.v2net],[2,1,3]),[300,2]);
     
     %hierarchical policy
     HPE = reshape([data.HPE]',[300,1]);
-    rpe_comp = reshape(permute([data.rpe_comp],[2,1,3]),[300,2]);
+    evidence_fb = reshape(permute([data.evidence_fb],[2,1,3]),[300,2]);
+    evidence_resp = reshape(permute([data.evidence_resp],[2,1,3]),[300,2]);
     cat = reshape(permute([data.cat],[2,1]),[300 1]);
     cat_upd = reshape(permute([data.cat_upd],[2,1]),[300 1]);
         
@@ -79,10 +91,17 @@ for i = 1:length(BEHdata)
     RPEs(i).Q1_p2 = Q1_p2;
     RPEs(i).Q2_p2 = Q2_p2;
     RPEs(i).HPE = HPE;
-    RPEs(i).RPE_comp = rpe_comp;
+    RPEs(i).evidence_fb = evidence_fb;
+    RPEs(i).evidence_resp = evidence_resp;
     RPEs(i).cat = cat;
     RPEs(i).cat_upd = cat_upd;
     RPEs(i).param = param;
+    RPEs(i).Q1_p1_old = Q1_p1_old;
+    RPEs(i).Q2_p1_old = Q2_p1_old;
+    RPEs(i).Q1_p2_old = Q1_p2_old;
+    RPEs(i).Q2_p2_old = Q2_p2_old;
+    RPEs(i).Q1net_old = Q1net;
+    RPEs(i).Q2net_old = Q2net;
             
     gnu = 1;
 end

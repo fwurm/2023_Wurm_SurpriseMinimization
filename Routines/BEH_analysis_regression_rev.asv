@@ -1,0 +1,382 @@
+function BEH_analysis_regression(exp_name)
+
+% to show plots for rebuttal
+rebuttal = 0;
+
+
+%load raw data
+load(sprintf('BEHdata-%s.mat',exp_name),'BEHdata')
+
+%load summary data
+load(sprintf('BEHsummary-%s.mat',exp_name),'BEHsummary')
+
+nS = length(BEHdata);
+[nB,nT] = size([BEHdata(1).dec1]);
+
+
+%% psychometric curve stay switch
+
+if rebuttal
+    
+    nBin1 = 6;
+    pSwitch       = nan(nS,nBin1);
+    nBin2 = 3;
+    pSwitch2       = nan(nS,nBin2,nBin2);
+    
+    
+    for iS = 1:nS
+        
+        r1 = BEHdata(iS).rew1;
+        r2 = BEHdata(iS).rew2;
+        
+        % get stay behavior
+        stays1 = double(~abs(diff(BEHdata(iS).dec1,[],2))); % Switch = 0; Stay = 1
+        stays2 = double(~abs(diff(BEHdata(iS).dec2,[],2))) ; % Switch = 0; Stay = 1
+        
+        binlims = linspace(0,100,nBin1+1);
+        rtbin_1 = discretize(r1,binlims);
+        rtbin_2 = discretize(r2,binlims);
+        
+        % all trials
+        target_stay1 = stays1;
+        target_stay2 = stays2;
+        target_r1 = rtbin_1(:,1:end-1);
+        target_r2 = rtbin_2(:,1:end-1);
+        
+        % first quarter
+        starttrial = 20;
+        target_stay1_start = stays1(:,1:starttrial);
+        target_stay2_start = stays2(:,1:starttrial);
+        target_r1_start = rtbin_1(:,1:starttrial);
+        target_r2_start = rtbin_2(:,1:starttrial);
+        
+        % last quarter
+        endtrial = 79;
+        target_stay1_end = stays1(:,endtrial:end);
+        target_stay2_end = stays2(:,endtrial:end);
+        target_r1_end = rtbin_1(:,endtrial:end-1);
+        target_r2_end = rtbin_2(:,endtrial:end-1);
+        
+        for iBin = 1:nBin1
+                 
+            pSwitch_rel(iS,iBin) = nanmean([target_stay1(target_r1==iBin);target_stay2(target_r2==iBin)]);
+            pSwitch_irel(iS,iBin) = nanmean([target_stay1(target_r2==iBin);target_stay2(target_r1==iBin)]);
+            
+            pSwitch_rel_start(iS,iBin) = nanmean([target_stay1_start(target_r1_start==iBin);target_stay2_start(target_r2_start==iBin)]);
+            pSwitch_irel_start(iS,iBin) = nanmean([target_stay1_start(target_r2_start==iBin);target_stay2_start(target_r1_start==iBin)]);
+            
+            pSwitch_rel_end(iS,iBin) = nanmean([target_stay1_end(target_r1_end==iBin);target_stay2_end(target_r2_end==iBin)]);
+            pSwitch_irel_end(iS,iBin) = nanmean([target_stay1_end(target_r2_end==iBin);target_stay2_end(target_r1_end==iBin)]);
+        end
+    end    
+    
+    x = binlims(1:end-1)+0.5.*diff(binlims);
+    
+    f = figure;
+    f.Units = 'norm';
+    f.Position =[-0.9,0.3,0.9,0.5];
+    
+    %% plot all data
+    ax = axes;
+    ax.Position = [0.1 0.1 0.25 0.8];
+    hold on
+    
+    y = nanmean(pSwitch_rel,1);
+    [lerr] = fw_cousineau(pSwitch_rel,'ci95');
+    l1 = shadedErrorBar(x,y',lerr,'k',1);
+    l1.mainLine.LineWidth = 2;
+    
+    y = nanmean(pSwitch_irel,1);
+    [lerr] = fw_cousineau(pSwitch_irel,'ci95');
+    l2 = shadedErrorBar(x,y',lerr,'r',1);
+    l2.mainLine.LineWidth = 2;
+    
+    l3 = plot([binlims(2:end-1);binlims(2:end-1)],repmat([0; 1],1,size(binlims(2:end-1),2)),'--k','LineWidth',0.5);
+    
+    legend(ax,[l1.mainLine l2.mainLine],{'relevant mapping' 'irrelevant mapping'},'Location','southeast')
+    
+    ax.LineWidth = 2;
+    ax.XTick = [0:20:100];
+    ax.YTick = [0:.25:1];
+    
+    xlabel('outcome value')
+    ylabel('stay probability')
+    
+    title('Psychometric curve')
+    
+    %% plot relevant mapping
+    ax = axes;
+    ax.Position = [0.4 0.1 0.25 0.8];
+    hold on
+    
+    y = nanmean(pSwitch_rel_start,1);
+    [lerr] = fw_cousineau(pSwitch_rel_start,'ci95');
+    l1 = shadedErrorBar(x,y',lerr,'k',1);
+    l1.mainLine.LineWidth = 2;
+    
+    y = nanmean(pSwitch_rel_end,1);
+    [lerr] = fw_cousineau(pSwitch_rel_end,'ci95');
+    l2 = shadedErrorBar(x,y',lerr,'r',1);
+    l2.mainLine.LineWidth = 2;
+    
+    l3 = plot([binlims(2:end-1);binlims(2:end-1)],repmat([0; 1],1,size(binlims(2:end-1),2)),'--k','LineWidth',0.5);
+    
+    legend(ax,[l1.mainLine l2.mainLine],{'start of block' 'end of block'},'Location','southeast')
+    
+    ax.LineWidth = 2;
+    ax.XTick = [0:20:100];
+    ax.YTick = [0:.25:1];
+    
+    xlabel('outcome value')
+    ylabel('stay probability')
+    
+    title('Relevant mapping')
+    
+    %% plot irrelevant mapping
+    ax = axes;
+    ax.Position = [0.7 0.1 0.25 0.8];
+    hold on
+    
+    y = nanmean(pSwitch_irel_start,1);
+    [lerr] = fw_cousineau(pSwitch_irel_start,'ci95');
+    l1 = shadedErrorBar(x,y',lerr,'k',1);
+    l1.mainLine.LineWidth = 2;
+    
+    y = nanmean(pSwitch_irel_end,1);
+    [lerr] = fw_cousineau(pSwitch_irel_end,'ci95');
+    l2 = shadedErrorBar(x,y',lerr,'r',1);
+    l2.mainLine.LineWidth = 2;
+    
+    l3 = plot([binlims(2:end-1);binlims(2:end-1)],repmat([0; 1],1,size(binlims(2:end-1),2)),'--k','LineWidth',0.5);
+    
+    legend(ax,[l1.mainLine l2.mainLine],{'start of block' 'end of block'},'Location','southeast')
+    
+    ax.LineWidth = 2;
+    ax.XTick = [0:20:100];
+    ax.YTick = [0:.25:1];
+    
+    xlabel('outcome value')
+    ylabel('stay probability')
+    
+    title('Irrelevant mapping')
+    
+    
+    
+    set(f,'Color','w')
+    
+    % plot(x,mean(pSwitch_rel,1))
+    % plot(x,mean(pSwitch_irel,1))
+    
+end
+
+
+%% quantify random walks
+
+if rebuttal
+    
+    for iS = 1:nS
+        
+        walks1 = BEHdata(iS).rew1;
+        walks2 = BEHdata(iS).rew2;
+        
+        walks1(BEHdata(iS).dec1==0) = 100-walks1(BEHdata(iS).dec1==0);
+        walks2(BEHdata(iS).dec2==0) = 100-walks2(BEHdata(iS).dec2==0);
+        
+        walks1 = diff(sign(walks1 - 50),[],2);
+        walks2 = diff(sign(walks2 - 50),[],2);
+        
+        flips1 = ismember(walks1,[2 -2]);
+        flips2 = ismember(walks2,[2 -2]);
+        
+        allflips(iS,:,:) = [sum(flips1,2) sum(flips2,2)],[1 2];
+    end
+    
+    fprintf('average numbers of flips in outcome: %.0f\n',mean(allflips,[1 2 3]))
+    fprintf('stability = %.2f trial\n',nT./mean(allflips,[1 2 3]))
+    
+end
+
+%% Regression: calculate regression and plot behavior
+wincrit = [50 50];
+% wincrit = [60 40];
+[fig1,mdl,ds] = calcswitch(exp_name,BEHdata,1,0,0,wincrit); %apply rescaling of rewards
+csvwrite('staybehavior_beh.csv'
+
+[fig1,mdl,ds] = calcswitch(exp_name,BEHdata,1,0,1,wincrit);
+
+%% plot WSLS
+
+% ds = ds_end;
+
+for iS = 1:nS
+    vpident = ismember(ds.VP,iS);
+    
+    datavp = ds(vpident,:);
+    
+    WW = ismember(datavp.Relev,1) & ismember(datavp.Irrelev,1);
+    WL = ismember(datavp.Relev,1) & ismember(datavp.Irrelev,-1);
+    LW = ismember(datavp.Relev,-1) & ismember(datavp.Irrelev,1);
+    LL = ismember(datavp.Relev,-1) & ismember(datavp.Irrelev,-1);
+    
+    staymeans(iS,1) = mean(datavp(WW,:).Stays);
+    staymeans(iS,2) = mean(datavp(WL,:).Stays);
+    staymeans(iS,3) = mean(datavp(LW,:).Stays);
+    staymeans(iS,4) = mean(datavp(LL,:).Stays);
+        
+end
+
+meanbar = mean(staymeans);
+[lerrbar] = fw_cousineau(staymeans,'sem');
+
+f = figure;
+f.Units = 'norm';
+f.Position = [0.1 0.1 0.3 0.3];
+ax = axes;
+hold on
+% b = bar([1 2],vars.mean_Stays([4 3; 2 1]),'grouped'); %,'BaseValue',0.5
+b1 = bar([1 4],meanbar([1 3])); %,'BaseValue',0.5
+b2 = bar([2 5],meanbar([2 4])); %,'BaseValue',0.5
+
+b1.BarWidth = 0.3;
+b2.BarWidth = 0.3;
+
+a = errorbar([1 2 4 5],meanbar,lerrbar,'.k','LineWidth',1);
+
+xlabel('Relevant outcome');
+ax.XLim = [0 6];
+ax.YLim = [0 1];
+
+ax.XTick = [1.5 4.5];
+ax.XTickLabels = {'win' 'loss'};
+
+leg = legend([b1,b2],{'win' 'loss'});
+title(leg,sprintf('Irrelevant\noutcome'));
+leg.Box = 'off';
+
+title('Choice behavior');
+f.Color = 'w';
+
+gnu = 1;
+
+%% Contrast: ttest Stayprob(relWin & irLoss) vs Stayprob(relLoss & irWin)
+
+
+rWiL = ismember(ds.Relev,1) & ismember(ds.Irrelev,-1); %relevantWin & irrelevantLoss
+rLiW = ismember(ds.Irrelev,1) & ismember(ds.Relev,-1); %relevantLoss & irrelevantWin
+
+
+for iS = 1:nS
+    %subject mask
+    vpident = ismember(ds.VP,iS);
+    
+    %get data for contrast
+    dat_cond1 = double(ds(rWiL&vpident,1));
+    dat_cond2 = double(ds(rLiW&vpident,1));
+    
+    %recode stay behavior
+    dat1_cond1(dat_cond1==-1) = 0;
+    dat1_cond2(dat_cond2==-1) = 0;
+    
+    %calculate average
+    agg_cond1(iS) = sum(dat_cond1)/length(dat_cond1);
+    agg_cond2(iS) = sum(dat_cond2)/length(dat_cond2);
+
+end
+
+% arcsine transformation of proportions
+dall_cond1_trans = fw_asinetrans(agg_cond1);
+dall_cond2_trans = fw_asinetrans(agg_cond2);
+
+% parametric test
+fprintf('   Calculating paired ttest...\n')
+[h_all,p_all,ci_all,stats_all] = ttest(dall_cond1_trans,dall_cond2_trans);
+fprintf('      tstat = %.2f\n      pval = %.3f\n      df = %i\n',stats_all.tstat,p_all,stats_all.df)
+
+% non-parametric test
+fprintf('   Calculating paired Wilcoxon signed rank test...\n')
+[p_all,h_all,stats_all] = signrank(dall_cond1_trans,dall_cond2_trans,'tail','both','method','approximate');
+fprintf('      Z = %.2f\n      pval = %.3f\n',stats_all.zval,p_all)
+
+%% Correlation: correlate bandit performance, implicit CA and transfer performance
+
+bandit = [BEHsummary.allCorr_block];
+implicitCA = agg_cond1-agg_cond2;
+transfer = [BEHsummary.allCorr_post];
+
+f2 = figure;
+f2.Units = 'norm';
+f2.Position = [-0.5 0.1 0.4 0.9];
+
+ax1 = axes;
+ax1.Position = [0.1 0.5 0.6 0.3];
+scat = scatter(transfer,bandit); % correlation
+scat.MarkerEdgeColor = 'k';
+ls = lsline(ax1);
+ls.LineWidth = 2;
+ls.Color = 'k';
+ax1.XLim = [0,1];
+ax1.YLim = [0.4 1];
+ax1.XTick = [0:0.2:1];
+ax1.YTick = [0:0.2:1];
+ax1.FontSize = 12;
+ylabel('Bandit performance');
+
+ax2 = axes;
+ax2.Position = [0.1 0.1 0.6 0.3];
+scat = scatter(transfer,implicitCA); % correlation
+scat.MarkerEdgeColor = 'k';
+ls = lsline(ax2);
+ls.LineWidth = 2;
+ls.Color = 'k';
+ax2.XLim = [0,1];
+ax2.YLim = [-0.5 1];
+ax2.XTick = [0:0.2:1];
+ax2.YTick = [-0.5:0.5:1];
+ax2.FontSize = 12;
+xlabel('Transfer performance');
+ylabel('Implicit CA');
+
+ax3 = axes;
+ax3.Position = [0.1 0.82 0.6 0.1];
+histo = histogram(transfer,linspace(0,1,13));
+histo.EdgeColor = [0 0 0];
+histo.FaceColor = [0.5 0.5 0.5];
+ax3.XLim = [0 1];
+ax3.XTick = [];
+ax3.Box = 'off'
+ax3.FontSize = 12;
+ylabel('Frequency','FontSize',8);
+
+ax4 = axes;
+ax4.Position = [0.72 0.5 0.1 0.3];
+histo = histogram(bandit,linspace(0.4,1,13));
+histo.EdgeColor = [0 0 0];
+histo.FaceColor = [0.5 0.5 0.5];
+ax4.XLim = [0.4 1];
+ax4.XTick = [];
+ax4.Box = 'off';
+ax4.FontSize = 12;
+ax4.XDir = 'reverse';
+% ylabel('Frequency','FontSize',8)
+view([90 90]);
+
+ax5 = axes;
+ax5.Position = [0.72 0.1 0.1 0.3];
+histo = histogram(implicitCA,linspace(-0.5,1,13));
+histo.EdgeColor = [0 0 0];
+histo.FaceColor = [0.5 0.5 0.5];
+ax5.XLim = [-0.5 1];
+ax5.XTick = [];
+ax5.Box = 'off';
+ax5.FontSize = 12;
+ax5.XDir = 'reverse';
+ylabel('Frequency','FontSize',8);
+view([90 90]);
+
+f2.Color = 'w'
+
+
+
+
+
+

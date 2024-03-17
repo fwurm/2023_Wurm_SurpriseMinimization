@@ -1,4 +1,5 @@
-function [f,mdl,ds] = calcswitch(model,BEHdata,rescale,doplot,doregress)
+function [f,mdl,ds] = calcswitch(model,BEHdata,rescale,doplot,doregress,wincrit)
+
 
 f = [];
 mdl = [];
@@ -15,6 +16,11 @@ if ~exist('doregress','var')
     doregress = 1;
 end
 
+if ~exist('wincrit','var')
+    wincrit = [50 50];
+end
+wincritt = wincrit/50-1;
+
 fprintf('######\n')
 fprintf('## %s\n',model)
 fprintf('######\n\n')
@@ -25,6 +31,16 @@ nS = length(BEHdata);
 
 %empty dataset to be appended per subject
 data = [];
+data2 = [];
+
+% mark early and late trials
+trialnums = repmat(1:nT-1,nB,1);
+trialnum2 = reshape(trialnums',(nT-1)*nB,1);
+trialstart = find(trialnum2<21);
+trialend = find(trialnum2>=80);
+trials = nan((nT-1)*nB,1);
+trials(trialstart) = 1;
+trials(trialend) = -1;
 
 for iS = 1:nS
     
@@ -42,10 +58,13 @@ for iS = 1:nS
     end
     
     %code rewards as win or loss
-    R1(R1<0) = -1;
-    R1(R1>=0) = 1;
-    R2(R2<0) = -1;
-    R2(R2>=0) = 1;
+    R1(R1<wincritt(1)) = -1;
+    R1(R1>wincritt(2)) = 1;
+    R1(R1>=wincritt(1)&R1<=wincritt(2)) = nan;
+    
+    R2(R2<wincritt(1)) = -1;
+    R2(R2>wincritt(2)) = 1;
+    R2(R2>=wincritt(1)&R2<=wincritt(2)) = nan;
     
     %reshape matrices to vectors
     stays1 = reshape(stays1',numel(stays1),1);
@@ -55,17 +74,38 @@ for iS = 1:nS
     
     %append data
     data = [data; stays1, R1, R2, ones(nB*(nT-1),1)*iS; stays2, R2, R1, ones(nB*(nT-1),1)*iS];
+    data2 = [data2; stays1, R1, R2, ones(nB*(nT-1),1)*iS, trials; stays2, R2, R1, ones(nB*(nT-1),1)*iS, trials];
+    
+    losttrials(iS) = sum(sum(isnan(R1))) + sum(sum(isnan(R2)));
     
 end
 
 %create dataset
 ds = dataset(data(:,1),data(:,2),data(:,3),data(:,4),'VarNames',{'Stays','Relev','Irrelev','VP'});
+ds2 = dataset(data2(:,1),data2(:,2),data2(:,3),data2(:,4),data2(:,5),'VarNames',{'Stays','Relev','Irrelev','VP','startend'});
 
 if doregress
     modelspec = 'Stays ~ Relev*Irrelev + (1 + Relev*Irrelev|VP)';
     mdl = fitglme(ds,modelspec,'Distribution','Binomial'); %Runs only on Matlab R2015b
     disp(mdl)
     anova_all = anova(mdl)
+    
+    modelspec2 = 'Stays ~ Relev*Irrelev*startend + (1 + Relev*Irrelev*startend|VP)';
+    mdl2 = fitglme(ds2,modelspec2,'Distribution','Binomial'); %Runs only on Matlab R2015b
+    disp(mdl2)
+    anova_all = anova(mdl2)
+    
+    startidx = ismember(ds2.startend,1);
+    ds_start = ds2(startidx,:);
+    mdl_start = fitglme(ds_start,modelspec,'Distribution','Binomial'); %Runs only on Matlab R2015b
+    disp(mdl_start)
+    anova_all = anova(mdl_start)
+    
+    endidx = ismember(ds2.startend,-1);
+    ds_end = ds2(endidx,:);
+    mdl_end = fitglme(ds_end,modelspec,'Distribution','Binomial'); %Runs only on Matlab R2015b
+    disp(mdl_end)
+    anova_all = anova(mdl_end)
 end
 
 
@@ -84,6 +124,12 @@ if doplot
     % b = bar([1 2],vars.mean_Stays([4 3; 2 1]),'grouped'); %,'BaseValue',0.5
     b1 = bar([1 4],vars.mean_Stays([4 2])); %,'BaseValue',0.5
     b2 = bar([2 5],vars.mean_Stays([3 1])); %,'BaseValue',0.5
+    
+    
+    b1.FaceColor = [0.3 0.3 0.3];
+    b2.FaceColor = [0.8 0.8 0.8];
+    b1.LineWidth = 2;
+    b2.LineWidth = 2;
     
     b1.BarWidth = 0.3;
     b2.BarWidth = 0.3;

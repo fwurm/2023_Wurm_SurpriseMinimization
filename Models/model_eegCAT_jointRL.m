@@ -26,13 +26,20 @@ function output = model_postCAT(x,data)
     
     info = [data.info];
     
-C = size(unique([data.d1]),1)*size(unique([data.d2]),1); % number of all options
+% C = size(unique([data.d1]),1)*size(unique([data.d2]),1); % number of all options
+C = 4;  
 
 lr = x(1);
 b = x(2);
 p = x(3);
 
 lik = 0;
+
+if isfield(data,'d1') && isfield(data,'d2')
+    actiontype = 'decision_given';
+else
+    actiontype = 'sample_decision';
+end
 
 for iB = 1:data.nB
 
@@ -43,12 +50,48 @@ for iB = 1:data.nB
 	for iT = 1:data.nT
         
         %write Qvalues before updating
-        data_model.v(iB,iT,:) = v; 
-    
-		c(1) = data.d1(iB,iT); c(2) = data.d2(iB,iT);
-		r(1) = data.r1(iB,iT); r(2) = data.r2(iB,iT);
-        rJ = r(1)+r(2);
-    
+        data_model.v(iB,iT,:) = v;
+                
+		q = b*v + p*ind; %Qvalue
+		ap = exp(q - logsumexp(q,2)); %action probability    
+		
+        if strcmp(info.type,'behavioral fit') || strcmp(actiontype,'decision_given')
+            c(1) = data.d1(iB,iT);
+            c(2) = data.d2(iB,iT);
+            r(1) = data.r1(iB,iT); 
+            r(2) = data.r2(iB,iT);
+        elseif strcmp(info.type,'simulation')
+            cJ = fastrandsample(ap);  % random choice
+            
+            %reverse choice
+            if cJ == 1
+                c(1) = 1;
+                c(2) = 1;
+            elseif cJ == 2
+                c(1) = 1 ;
+                c(2) = 2;
+            elseif cJ == 3
+                c(1) = 2 ;
+                c(2) = 1;
+            elseif cJ == 4
+                c(1) = 2;
+                c(2) = 2;
+            end
+            
+            if strcmp(info.fbtype,'probs')
+                r(1) = double(rand<data.r1(iB,iT,c(1)));
+                r(2) = double(rand<data.r2(iB,iT,c(2)));
+            elseif strcmp(info.fbtype,'value')
+                r(1) = data.r1(iB,iT,c(1));
+                r(2) = data.r2(iB,iT,c(2));
+            end
+            
+        else
+            warning('no type specified')
+        end
+        
+		%decide reward
+        rJ = r(1)+r(2);    
 		if c(1) == 1 && c(2) == 1
 			cJ = 1;       
 		elseif c(1) == 1 && c(2) == 2
@@ -57,16 +100,13 @@ for iB = 1:data.nB
 			cJ = 3; 
 		elseif c(1) == 2 && c(2) == 2
 			cJ = 4; 
-		end  
+        end  
     
-		%update log likelihood
-		q = b*v + p*ind; %Qvalue
-		ap = exp(q - logsumexp(q,2)); %action probability
-    
+        %update log likelihood
 		lik_temp = log(ap(cJ));
 		if isinf(log(ap))
 			lik_temp = -(10^5);
-		end
+        end
     
 		lik = lik + lik_temp; %log likelihood
 		pred(iT,1) = ap(cJ);
@@ -94,7 +134,7 @@ for iB = 1:data.nB
         data_model.v_upd(iB,iT,:) = v; 
         
         %write simulated data structure (Qvalues before updating)
-        data_model.c(iB,iT,1) = c(1); data_model.c2(iB,iT,1) = c(2); data_model.cJ(iB,iT,1) = cJ;
+        data_model.c1(iB,iT,1) = c(1); data_model.c2(iB,iT,1) = c(2); data_model.cJ(iB,iT,1) = cJ;
         data_model.r1(iB,iT,1) = r(1); data_model.r2(iB,iT,1) = r(2); data_model.rJ(iB,iT,1) = rJ;
         data_model.corr1(iB,iT,1) = corr(1); data_model.corr2(iB,iT,1) = corr(2);
         data_model.rpeJ(iB,iT,:) = rpe; 

@@ -27,22 +27,59 @@ function output = model_postCAT(x,data)
 % Franz Wurm, October 2021
 % adapted from Sam Gershman, June 2015
 
-if (abs(x(4)) == 999)    
-    if x(4) == 999 %correct mapping
-        sb = 100;
-    elseif x(4) == -999 %incorrect mapping
-        sb = -100;
-    end
-    x(4) = 0;
-else
-    sb = 0; %startbias for credit assignment
-end
+model = data.model;
 
 %get parameters
 lr = x(1);
 it = x(2);
 pe = x(3);
-ar = x(4);
+
+iPara = 3;
+if contains(model,'-ar')
+    iPara = iPara+1;
+    ar = x(iPara);
+    
+%     if (abs(x(4)) == 999)
+%         if x(4) == 999 %correct mapping
+%             sb = 100;
+%         elseif x(4) == -999 %incorrect mapping
+%             sb = -100;
+%         end
+%         x(4) = 0;
+%     else
+%         sb = 0; %startbias for credit assignment
+%     end
+else
+    ar = 0;
+end
+
+if contains(model,'-start')
+    iPara = iPara+1;
+    sb = x(iPara);
+elseif contains(model,'-corr')    
+    sbf = +1;
+%     sb = 2.2; %80% = 1.39; 90% = 2.2
+elseif contains(model,'-incorr')
+    sbf = -1;
+%     sb = -2.2; %80% = 1.39; 90% = 2.2
+else
+    sb = 0;
+end
+
+if contains(model,'-decay')
+    iPara = iPara+1;
+    dc = x(iPara); %learning decay
+end
+
+if contains(model,'corr100')
+    sb = 10*sbf;
+elseif contains(model,'corr90')
+    sb = 2.2*sbf;
+elseif contains(model,'corr80')
+    sb = 1.39*sbf;
+elseif contains(model,'rand')
+    sb = 0;
+end
 
 if isfield(data,'d1') && isfield(data,'d2')
     actiontype = 'decision_given';
@@ -75,10 +112,15 @@ for iB = 1:data.nB
         
         %write credit assignment before updating
         data_model.cat(iB,iT,1) = cat;
+        data_model.v1p1(iB,iT,:) = v1p1; data_model.v2p1(iB,iT,:) = v2p1;
+        data_model.v1p2(iB,iT,:) = v1p2; data_model.v2p2(iB,iT,:) = v2p2;
         
         %calculate net action values for each stage
         v1net = cat.*v1p1 + (1-cat).*v1p2;
         v2net = cat.*v2p1 + (1-cat).*v2p2;
+        
+        data_model.v1net(iB,iT,:) = v1net;
+        data_model.v2net(iB,iT,:) = v2net;
         
         %calculate action probabilities
         q1 = it*v1net + pe*ind1; %Qvalue stage 1
@@ -149,11 +191,25 @@ for iB = 1:data.nB
         ind1 = zeros(1,C(1)); ind2 = zeros(1,C(2));
         ind1(c(1)) = 1; ind2(c(2)) = 1;
                 
-        %forgetting
-        v1p1(3-c(1)) = (1-lr)*v1p1(3-c(1));
-        v2p1(3-c(2)) = (1-lr)*v2p1(3-c(2));
-        v1p2(3-c(1)) = (1-lr)*v1p2(3-c(1));
-        v2p2(3-c(2)) = (1-lr)*v2p2(3-c(2));
+        if contains(model,'-counter')           
+            %counterfactual updating
+            v1p1(3-c(1)) = v1p1(3-c(1)) - lr*RPEp1(1);
+            v2p1(3-c(2)) = v2p1(3-c(2)) - lr*RPEp1(2);
+            v1p2(3-c(1)) = v1p2(3-c(1)) - lr*RPEp2(1);
+            v2p2(3-c(2)) = v2p2(3-c(2)) - lr*RPEp2(2);
+        elseif contains(model,'-decay')  
+            %forgetting with decay rate
+            v1p1(3-c(1)) = dc*v1p1(3-c(1));
+            v2p1(3-c(2)) = dc*v2p1(3-c(2));
+            v1p2(3-c(1)) = dc*v1p2(3-c(1));
+            v2p2(3-c(2)) = dc*v2p2(3-c(2));
+        else
+            %forgetting with learning rate
+            v1p1(3-c(1)) = (1-lr)*v1p1(3-c(1));
+            v2p1(3-c(2)) = (1-lr)*v2p1(3-c(2));
+            v1p2(3-c(1)) = (1-lr)*v1p2(3-c(1));
+            v2p2(3-c(2)) = (1-lr)*v2p2(3-c(2));          
+        end
         
         %write Qvalues before updating
         data_model.v1p1_upd(iB,iT,:) = v1p1; data_model.v2p1_upd(iB,iT,:) = v2p1;
@@ -166,7 +222,8 @@ for iB = 1:data.nB
         data_model.corr1(iB,iT,1) = corr(1); data_model.corr2(iB,iT,1) = corr(2);
         data_model.RPEp1(iB,iT,:) = RPEp1; data_model.RPEp2(iB,iT,:) = RPEp2;
         data_model.HPE(iB,iT) = HPE;
-        data_model.rpe_comp(iB,iT,:) = [[abs(RPEp2(1)) - abs(RPEp1(1))] [abs(RPEp2(2)) - abs(RPEp1(2))]];
+        data_model.evidence_fb(iB,iT,:) = [(abs(RPEp2(2)) - abs(RPEp1(1))) (abs(RPEp2(1)) - abs(RPEp1(2)))]; %reward1 & reward2 PE
+        data_model.evidence_resp(iB,iT,:) = [(abs(RPEp2(1)) - abs(RPEp1(1))) (abs(RPEp2(2)) - abs(RPEp1(2)))]; %stage1 & stage2 PE
         
         if any(isnan(v1p1)) || any(isnan(v2p1)) || any(isnan(v1p2)) || any(isnan(v2p2))
             warning('something in Qvalues is off')

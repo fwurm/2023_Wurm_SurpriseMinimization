@@ -1,0 +1,438 @@
+function simulateBehavior(models,paratype,fbtype,nSubjects)
+% input parameter
+%   - models
+%   - paratype (
+%       empprior = parameters drawn from empirical prior distributions
+%       random = drawn from random (=uniform) distributions
+%       fitted = drawn from behavioral data
+%   - fbtype (
+%       value = magnitude (reward ranging between 0 and 100)
+%       probs = reward probability (reward is either 0 or 1)
+dir2load = 'C:\Users\wurmf\Dropbox\Manuscripts\postCAT\PLOS_CB\plotting';
+
+%% setting up the environment (identical to experiment)
+para_sim.nB = 3; % number of blocks
+para_sim.nS = 2; % number of sets per block
+para_sim.nT = 100; % number of trials
+% rng(0,'twister'); %initialize the random number generator for replicability
+para_sim.lowerBound = 1;
+para_sim.upperBound = 99;
+para_sim.walkMean = 0;
+para_sim.walkStd = 20;
+
+walk = struct();
+walk.info.type = 'simulation';
+walk.info.fbtype = fbtype;
+walk.N = para_sim.nT*para_sim.nB*2;
+walk.nB = para_sim.nB;
+walk.nT = para_sim.nT;
+
+
+%% retrieve parameters for simulation
+if ismember(paratype,{'empprior','random'})   
+    for iModel = 1:length(models)
+%         [mstruct(iModel), ~, ~] = defineModel_eegCAT(models{iModel}); %old verions (first submission)
+        [mstruct(iModel), ~, ~] = defineModel_eegCAT_general(models{iModel});
+        paraspace{iModel} = sampleParameters(mstruct(iModel),nSubjects,paratype);
+    end   
+elseif strcmp(paratype,'fitted')
+    for iModel = 1:length(models)
+        fn_estimation = [dir.dir_fits 'fit_subject_' models{iModel} '_all_v4.mat'];
+        load(fn_estimation)
+        behavior.nVP = size(results.x,1);
+        paraspace{iModel} = [results.x];
+    end
+else
+    error('no suffix for parameter recovery specified');
+end
+
+%% simulate  behavior
+fprintf('Starting simulation...\n')
+fprintf('Agent 1.')
+for i = 1:nSubjects
+    
+    if rem(i,100)==0
+        fprintf('%d.',i)
+    end
+    
+    %% generate walks
+    [rew_payoff,rew_dichot] = doWalk(para_sim);
+    if strcmp(walk.info.fbtype,'value')
+        walk.r1(:,:,1) = squeeze(rew_payoff(:,1,:));
+        walk.r1(:,:,2) = 100 - squeeze(rew_payoff(:,1,:));
+        walk.r2(:,:,1) = squeeze(rew_payoff(:,2,:));
+        walk.r2(:,:,2) = 100 - squeeze(rew_payoff(:,2,:));
+        walk.r1 = (walk.r1./50)-1;
+        walk.r2 = (walk.r2./50)-1;
+    elseif strcmp(walk.info.fbtype,'probs')
+        walk.r1(:,:,1) = squeeze(rew_dichot(:,1,:));
+        walk.r1(:,:,2) = 1 - squeeze(rew_dichot(:,1,:));
+        walk.r2(:,:,1) = squeeze(rew_dichot(:,2,:));
+        walk.r2(:,:,2) = 1 - squeeze(rew_dichot(:,2,:));
+        walk.r1 = (walk.r1.*2)-1;
+        walk.r2 = (walk.r2.*2)-1;
+    end
+    
+    
+    
+    %% run models
+    for iModel = 1:length(models)
+        parasubspace = paraspace{iModel}(:,i);        
+        
+        walk.model = models{iModel};
+        
+        data_sim = mstruct(iModel).funhandle(parasubspace,walk);
+        
+        BEHdata{iModel}(i).VPname = ['Sim' num2str(i)];
+        BEHdata{iModel}(i).VPnum = i;
+        BEHdata{iModel}(i).dec1 = data_sim.c1;
+        BEHdata{iModel}(i).rew1 = data_sim.r1;
+        BEHdata{iModel}(i).dec2 = data_sim.c2;
+        BEHdata{iModel}(i).rew2 = data_sim.r2;
+        
+        %calculate correlation between RPEs and evidence if model contains arbitration mechanism
+        if contains(models{iModel},'-ar')
+            [r,p] = corrcoef(data_sim.RPEp1,data_sim.evidence_resp);
+            rs(i,1) = r(1,2);
+            ps(i,1) = p(1,2);
+            [r,p] = corrcoef(data_sim.RPEp2,data_sim.evidence_resp);%flip(data_sim.RPEp2,3)
+            rs(i,2) = r(1,2);
+            ps(i,2) = p(1,2);
+            [r,p] = corrcoef(data_sim.RPEp1,data_sim.evidence_resp); %flip(data_sim.evidence_resp,3)
+            rs(i,3) = r(1,2);
+            ps(i,3) = p(1,2);
+        end
+        
+        %averaged performance
+        performance(i,iModel) = mean([mean(mean(data_sim.corr1,2),1) mean(mean(data_sim.corr2,2),1)]);
+      
+        %save average surprise if model contains arbitration mechanism
+        if contains(models{iModel},'-ar')
+            surprise(i,1) = mean(abs(reshape(data_sim.RPEp1,1,numel(data_sim.RPEp1))));
+            surprise(i,2) = mean(abs(reshape(data_sim.RPEp2,1,numel(data_sim.RPEp2))));
+        
+            cat(:,:,i) = [data_sim.cat];
+        
+            avg_surprise(i,:,:,1) = mean(abs(data_sim.RPEp1),[3]);
+            avg_surprise(i,:,:,2) = mean(abs(data_sim.RPEp2),[3]);
+            avg_surprise(i,:,:,3) = mean(abs(data_sim.RPEp2)-abs(data_sim.RPEp1),[3]);
+        end
+    end
+end
+fprintf('\n')
+
+% check if surprise signas are different between policies
+[P,H,stats] = signrank(surprise(:,1),surprise(:,2))
+
+% average correlation coefficients
+rs_avg = tanh(mean(atanh(rs)));
+
+%selection 30 random participants for plotting
+idx = randperm(nSubjects,30);
+idx = 1:nSubjects;
+
+%% figure 3A
+model = 'hierarchicalRL-counter-corr100';
+fig3A = calcswitch(model,BEHdata{ismember(models,model)}(idx),0,1,0,[50 50]); %(model,BEHdata,rescale,doplot,doregress,wincrit)
+
+%% figure 3B
+model = 'hierarchicalRL-counter-incorr100';
+fig3B = calcswitch(model,BEHdata{ismember(models,model)}(idx),0,1,0,[50 50]);
+
+%% figure 3C
+model = 'hierarchicalRL-ar-counter';
+fig3C = calcswitch(model,BEHdata{ismember(models,model)}(idx),0,1,0,[50 50]);
+
+% %% figure 3F
+% fig3F = figure;
+% ax3F = axes;
+% 
+% SEM = std(avg_surprise,[1,2])/sqrt(nSubjects);               % Standard Error
+% ts = tinv([0.025  0.975],nSubjects-1);      % T-Score
+% CI = ts(1).*SEM;
+% % CIup = squeeze(mean(x,1) + ts(1).*SEM);
+% % CIlow = squeeze(mean(x,1) - ts(1).*SEM);
+% 
+% x = 1:100;
+% hold on
+% p1 = shadedErrorBar(x,mean(avg_surprise(:,:,1),[1 2]),CI(1,:,1),{'color','g','markerfacecolor','g','linewidth',2},1);
+% p2 = shadedErrorBar(x,mean(avg_surprise(:,:,2),[1 2]),CI(1,:,2),{'color','r','markerfacecolor','r','linewidth',2},1);
+% % p(3) = plot(x,mean(avg_surprise(:,:,3),[1]));
+% 
+% % p(1).LineWidth = 2;
+% % p(2).LineWidth = 2;
+% % p(1).Color = 'g';
+% % p(2).Color = 'r';
+% 
+% xlabel('Trial');
+% ylabel('surprise');
+% 
+% ax3F.FontSize = 16;
+% ax3F.LineWidth = 2;
+% ax3F.YLim = [0.25 0.55];
+% fig3F.Color = 'w';
+% 
+% title('Surprise time course')
+% l1 = legend([p1.mainLine p2.mainLine],{'correct policy' 'incorrect policy'});
+% l1.Location = 'northeast';
+% l1.Box = 'off';
+% 
+% 
+% 
+% Match=cellfun(@(x) ismember(x, {'hierarchicalRL-corr' 'hierarchicalRL-incorr'}), models, 'UniformOutput', 0);
+% mapident = cell2mat(Match);
+
+%% figure 3D
+fig3D = figure;
+ax3D = axes;
+hold on
+h1 = histogram(surprise(:,1),linspace(0,1,300))
+h1.FaceColor = [0 0.25 0.16];
+h2 = histogram(surprise(:,2),linspace(0,1,300))
+h2.FaceColor = [1 0.3 0.3];
+% hist(surprise(:,mapident),100)
+xlabel('Surprise')
+ylabel('Frequency')
+legend({'Correct policy' 'Incorrect policy'})
+set(gcf,'color','w');
+title('Surprise distribution')
+ax3D.XLim = [0.2 0.6];
+
+%% figure 3E
+% fig3E = figure;
+% ax3E = axes;
+% 
+% for i = 1:nSubjects
+%     %     i = 14; %agents
+%     plot([1:100],cat(1,:,i),'LineWidth',2)
+%     hold on
+%     plot([1:100],cat(2,:,i),'LineWidth',2)
+%     plot([1:100],cat(3,:,i),'LineWidth',2)
+%     plot([1:100],mean(cat,[1 3]),'k','LineWidth',2)
+%     hold off
+% end
+% legend({'Block 1' 'Block 2' 'Block 3' 'Mean'},'Location','southeast')
+% title('Evidence accumulation')
+% ax3E.LineWidth = 2;
+% ax3E.YLim = [0 1];
+% fig3E.Color = 'w';
+
+
+%% figure 4
+i = 5; %agents
+iB = 1;
+
+fontsize = 12;
+x = 1:100;
+
+SEM = std(squeeze(mean(avg_surprise,2)),[1])./sqrt(nSubjects);               % Standard Error
+ts = tinv([0.025  0.975],nSubjects-1);      % T-Score
+CI = ts(1).*SEM;
+% CIup = squeeze(mean(x,1) + ts(1).*SEM);
+% CIlow = squeeze(mean(x,1) - ts(1).*SEM);
+
+fig4 = figure;
+fig4.Units = 'norm';
+fig4.Position = [0.5 0.2 0.4 0.5];
+
+ax41 = axes;
+ax41.FontSize = fontsize;
+
+hold on
+plot([1:100],cat(iB,:,i),'LineWidth',2)
+
+% plot([1:100],cat(2,:,i),'LineWidth',2)
+% plot([1:100],cat(3,:,i),'LineWidth',2)
+plot([1:100],mean(cat,[1 3]),'Color',[0.3 0.3 0.3],'LineWidth',2)
+hold off
+
+% lgd41 = legend(ax41,{'Block 1' 'Block 2' 'Block 3' 'Mean'},'Location','southeast')
+lgd41 = legend(ax41,{'Block' 'Average'})
+lgd41.Location = 'eastout';
+lgd41.Box = 'off';
+title('Evidence accumulation')
+
+ax41.LineWidth = 2;
+ax41.YLim = [0.3 1];
+ax41.XTick = [];
+ax41.Position = [0.1 0.55 0.65 0.35];
+
+ax41.XColor = 'none'
+ylabel(ax41,'logit^{-1}(\omega)')
+
+
+
+ax43 = axes;
+hold on
+plot([1:100],squeeze(avg_surprise(i,iB,:,3)),'LineWidth',2) %difference
+p1 = shadedErrorBar(x,mean(avg_surprise(:,:,:,3),[1 2]),CI(1,:,1),{'color',[0.3 0.3 0.3],'markerfacecolor','g','linewidth',2},1);
+ax43.XColor = 'none'
+ax43.Position = [0.1 0.35 0.65 0.15];
+ax43.LineWidth = 2;
+ax43.FontSize = fontsize;
+title(ax43,'Evidence generation')
+l1 = line([0 100],[0 0]);
+l1.Color = 'k';
+l1.LineWidth = 1;
+l1.LineStyle = '--';
+
+ax42 = axes;
+% ax42.Position = [0.1 0.1 0.8 0.15];
+x = 1:100;
+hold on
+plot([1:100],squeeze(avg_surprise(i,iB,:,1)),'LineWidth',2,'Color',[0 0.5 0.16]) %correct
+plot([1:100],squeeze(avg_surprise(i,iB,:,2)),'LineWidth',2,'Color',[1 0.6 0.6]) %incorrect
+
+
+
+
+p1 = shadedErrorBar(x,mean(avg_surprise(:,:,:,1),[1 2]),CI(1,:,1),{'color',[0 0.8 0],'markerfacecolor','g','linewidth',1},1);
+p2 = shadedErrorBar(x,mean(avg_surprise(:,:,:,2),[1 2]),CI(1,:,2),{'color',[1 0 0],'markerfacecolor','r','linewidth',1},1);
+% p(3) = plot(x,mean(avg_surprise(:,:,3),[1]));
+
+% p(1).LineWidth = 2;
+% p(2).LineWidth = 2;
+% p(1).Color = 'g';
+% p(2).Color = 'r';
+
+xlabel('Trial');
+ylabel('surprise');
+
+lgd42 = legend(ax42,[p1.mainLine p2.mainLine],{'Correct' 'Incorrect'});
+lgd42.Location = 'eastout';
+lgd42.Box = 'off';
+% lgd42.Location = 'eastout';
+
+ax42.FontSize = fontsize;
+ax42.LineWidth = 2;
+ax42.YLim = [0 1.2];
+
+ax42.Position = [0.1 0.125 0.65 0.15];
+
+title(ax42,'Surprise')
+
+
+fig4.Color = 'w';
+
+%% all figure
+
+fx = figure;
+fx.Units = 'norm';
+fx.Position = [0.5 0. 0.4 1];
+
+% sax1 = axes;
+sax1 = copyobj(findall(fig3A,'type','axes'),fx);
+sax1.Position = [0.1 0.75 0.4 0.2];
+sax1.LineWidth = 2;
+title(sax1,'Correct Policy','FontSize',12)
+ylabel(sax1,'Stay probability')
+
+sax2 = copyobj(findall(fig3B,'type','axes'),fx);
+sax2.Position = [0.55 0.75 0.4 0.2];
+sax2.LineWidth = 2;
+title(sax2,'Incorrect Policy','FontSize',12);
+sax2.YColor = 'none';
+
+lgd = legend(sax2,{'win','loss'});
+lgd.Box = 'off';
+title(lgd,'Irrelevant Outcome')
+
+sax3 = copyobj(findall(fig3C,'type','axes'),fx);
+sax3.Position = [0.3 0.45 0.4 0.2];
+sax3.LineWidth = 2;
+title(sax3,'Arbitration-weighted policies','FontSize',12);
+ylabel(sax3,'Stay probability')
+
+lgd = legend(sax3,{'win','loss'});
+lgd.Box = 'off';
+title(lgd,'Irrelevant Outcome')
+
+sax4 = copyobj(ax3D,fx);
+sax4.Position = [0.1 0.1 0.4 0.25];
+title(sax4,'Surprise Distribution','FontSize',12)
+sax4.LineWidth = 2;
+
+lgd = legend(sax4,{'correct','incorrect'});
+lgd.Box = 'off';
+title(lgd,'Policy')
+
+
+sax5 = copyobj(ax41,fx);
+sax5.Position = [0.65 0.25 0.3 0.1];
+sax5.FontSize = 10;
+
+lgd4 = legend(sax5,{'Block','Average'});
+lgd4.Box = 'off';
+lgd4.Location = 'southeast';
+
+sax6 = copyobj(ax43,fx);
+sax6.Position = [0.65 0.17 0.3 0.05];
+sax6.FontSize = 10;
+
+sax7 = copyobj(ax42,fx);
+sax7.Position = [0.65 0.1 0.3 0.05];
+sax7.FontSize = 10;
+
+
+sax8 = axes();
+sax8.Position = [0.40 0.9 0.06 0.06];
+imshow(fullfile(dir2load, 'Fig3_policy_correct.png'))
+
+sax9 = axes();
+sax9.Position = [0.55 0.9 0.06 0.06];
+imshow(fullfile(dir2load, 'Fig3_policy_incorrect.png'))
+
+sax10 = axes();
+sax10.Position = [0.03 0.95 0.03 0.03];
+txt = text(0.5,0.5,'A');
+txt.FontSize = 14;
+txt.FontWeight = 'bold';
+txt.HorizontalAlignment = 'center';
+txt.VerticalAlignment = 'middle';
+sax10.XColor = 'none';
+sax10.YColor = 'none';
+
+sax11 = axes();
+sax11.Position = [0.53 0.95 0.03 0.03];
+txt = text(0.5,0.5,'B');
+txt.FontSize = 14;
+txt.FontWeight = 'bold';
+txt.HorizontalAlignment = 'center';
+txt.VerticalAlignment = 'middle';
+sax11.XColor = 'none';
+sax11.YColor = 'none';
+
+sax12 = axes();
+sax12.Position = [0.24 0.65 0.03 0.03];
+txt = text(0.5,0.5,'C');
+txt.FontSize = 14;
+txt.FontWeight = 'bold';
+txt.HorizontalAlignment = 'center';
+txt.VerticalAlignment = 'middle';
+sax12.XColor = 'none';
+sax12.YColor = 'none';
+
+sax13 = axes();
+sax13.Position = [0.03 0.35 0.03 0.03];
+txt = text(0.5,0.5,'D');
+txt.FontSize = 14;
+txt.FontWeight = 'bold';
+txt.HorizontalAlignment = 'center';
+txt.VerticalAlignment = 'middle';
+sax13.XColor = 'none';
+sax13.YColor = 'none';
+
+sax14 = axes();
+sax14.Position = [0.56 0.35 0.03 0.03];
+txt = text(0.5,0.5,'E');
+txt.FontSize = 14;
+txt.FontWeight = 'bold';
+txt.HorizontalAlignment = 'center';
+txt.VerticalAlignment = 'middle';
+sax14.XColor = 'none';
+sax14.YColor = 'none';
+
+fx.Color = 'w';
+
+
+
